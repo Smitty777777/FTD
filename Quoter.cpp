@@ -2,7 +2,6 @@
 // The top of every source code file must include this line
 #include "scconstants.h"
 #include "scstructures.h"
-
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -12,6 +11,7 @@
 #include <limits>
 #include <new>
 #include <type_traits>
+#include <tuple>
 #include <vector>
 #include <atomic>
 #include <optional>
@@ -28,13 +28,27 @@
 SCDLLName("Quoter")
 
 namespace osmi{
-template<typename One, typename Two, typename...Optionals> struct  O_Price{
-    static_assert(std::is_arithmetic_v<One> &&
-                  std::is_arithmetic_v<Two>, "must be numeric T");
+template<typename One, typename Two, typename...Optionals> class  O_Price{
+private:
+    static_assert(std::is_arithmetic<One>::value &&
+                  std::is_arithmetic<Two>::value, "must be numeric T");
 
     One price {};
     Two qty   {};
-    std::tuple<Optionals...> members{};
+    std::tuple<Optionals...> members {};
+
+public:
+
+    O_Price(One price, Two qty, Optionals&&... args) :
+        price(price), qty(qty), members(args...) {};
+
+    O_Price() = default;
+
+    [[nodiscard]] inline constexpr One getPrice() noexcept { return price; }
+    [[nodiscard]] inline constexpr Two getQuantity() noexcept { return qty; }
+    inline constexpr void setPrice(One px) noexcept { price = px; }
+    inline constexpr void setQuantity(Two sz) noexcept { qty = sz; }
+
 
     template<std::size_t index> constexpr decltype(auto) getMember() noexcept{
         static_assert(index < sizeof...(Optionals), "index out of range");
@@ -51,7 +65,6 @@ template<typename One, typename Two, typename...Optionals> struct  O_Price{
     template<typename ParamT> [[nodiscard]] static constexpr std::int64_t toInternalPrice(const ParamT& price) noexcept{
         static_assert(std::is_floating_point<ParamT>::value, "display must be floating point");
         return static_cast<std::uint64_t>(price * 1'000'000);
-
     }
     template<typename ParamT> [[nodiscard]] static constexpr float toDisplayPrice(const ParamT& price) noexcept{
         static_assert(std::is_integral<ParamT>::value, "internal price must be int");
@@ -141,7 +154,7 @@ public:
         while (bins_[index].has_value()){
             Entry& entry = *bins_[index];
 
-            if (entry.hash == hash && equal_(entry.key, key)){
+            if (entry.hash == hash && equal(entry.key, key)){
                 entry.value = std::move(value);
                 return &entry.value;
             }
@@ -256,16 +269,11 @@ osmi::O_Arr<osmi::O_Price<float, std::uint32_t>, BID_LEVELS_N> bidPrices_;
 osmi::O_Arr<osmi::O_Price<float, std::uint32_t>, ASK_LEVELS_N> askPrices_;
 
 void OnMarketDepth(osmi::O_Price<float, std::uint32_t>& bid, osmi::O_Price<float, std::uint32_t>& ask, SCStudyInterfaceRef sc){
-    if (bid.price > 0 && ask.price > 0){
+    if (bid.getPrice() > 0 && ask.getPrice() > 0){
         constexpr size_t szb {10}; s_SCNewOrder bidOrders[szb];
         constexpr size_t sza {10}; s_SCNewOrder askOrders[sza];
 
-        if (bidPrices_[0].qty > 10){
-            s_SCNewOrder order;
-            order.OrderQuantity = 10.0;
-            order.OrderType = 1;
 
-        }
     }
 }
 //This is the basic framework of a study function. Change the name 'TemplateFunction' to what you require.
@@ -297,20 +305,20 @@ SCSFExport scsf_MainLoop(SCStudyInterfaceRef sc)
 	for (size_t lvl{0}; lvl < BID_LEVELS_N; lvl++){
 	    s_MarketDepthEntry entry{};
 		if (sc.GetBidMarketDepthEntryAtLevel(entry, lvl)){
-		    bidPrices_.set({entry.Price, entry.GetQuantityAsInt()}, lvl);
+		    bidPrices_.push_back({entry.Price, entry.GetQuantityAsInt()}, lvl);
 		}
 	}
 	askPrices_.clear();
 	for (size_t lvl{0}; lvl < ASK_LEVELS_N; lvl++){
 	    s_MarketDepthEntry entry{};
 		if (sc.GetAskMarketDepthEntryAtLevel(entry, lvl)){
-           askPrices_.set({entry.Price, entry.GetQuantityAsInt()}, lvl);
+           askPrices_.push_back({entry.Price, entry.GetQuantityAsInt()}, lvl);
 		}
 	}
 
 	if (!bidPrices_.empty() && !askPrices_.empty()){
-	    auto bb = bidPrices_.front();
-		auto ba = askPrices_.front();
+	    auto& bb = bidPrices_.front().value().get();
+		auto& ba = askPrices_.front().value().get();
 	    if (bb  != bidCache_ ||ba != askCache_){
 			OnMarketDepth(bb,  ba, sc);
 			bidCache_ = bb;
