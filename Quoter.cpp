@@ -21,12 +21,12 @@
 #include <limits>
 #include <algorithm>
 #include <wx/wx.h>
-// For reference, refer to this page:
 
-// This line is required. Change the text within the quote
-// marks to what you want to name your group of custom studies.
+
+
 SCDLLName("Quoter")
 
+//paste util coz remote build
 namespace osmi{
 template<typename One, typename Two, typename...Optionals> class  O_Price{
 private:
